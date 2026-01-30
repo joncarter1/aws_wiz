@@ -16,7 +16,8 @@ from rich.panel import Panel
 @click.option('--type', '-t', required=True, type=click.Choice(['ec2', 's3']), help='Resource type (ec2 or s3)')
 @click.option('--id', '-i', required=True, help='Resource ID (Instance ID or Bucket Name)')
 @click.option('--region', '-r', default='us-east-1', help='AWS Region (default: us-east-1)')
-def main(type, id, region):
+@click.option('--force', '-f', is_flag=True, help='Force deletion (e.g., delete non-empty S3 buckets)')
+def main(type, id, region, force):
     """Safely terminate an AWS resource (EC2 Instance or S3 Bucket)."""
     console = Console()
     
@@ -68,9 +69,12 @@ def main(type, id, region):
             )
             
             if not is_empty:
-                console.print(Panel(details, title="Resource Found", border_style="red"))
-                console.print("[bold red]WARNING: Bucket is not empty! This tool only deletes empty buckets for safety.[/bold red]")
-                return
+                if force:
+                    details += "\n[yellow]Force: Enabled (Will empty bucket)[/yellow]"
+                else:
+                    console.print(Panel(details, title="Resource Found", border_style="red"))
+                    console.print("[bold red]WARNING: Bucket is not empty! Use --force to empty and delete.[/bold red]")
+                    return
 
         except Exception as e:
             console.print(f"[red]Error finding S3 bucket {id}: {e}[/red]")
@@ -79,7 +83,7 @@ def main(type, id, region):
     # 2. Confirmation Phase
     console.print(Panel(details, title="Confirm Deletion", border_style="red"))
     
-    if not click.confirm(f"Are you sure you want to PERMANENTLY DELETE this {type.upper()} resource?"):
+    if not force and not click.confirm(f"Are you sure you want to PERMANENTLY DELETE this {type.upper()} resource?"):
         console.print("[yellow]Deletion cancelled.[/yellow]")
         return
 
@@ -91,6 +95,16 @@ def main(type, id, region):
             console.print(f"[bold green]Termination signal sent to {id}.[/bold green]")
             
         elif type == 's3':
+            if force:
+                console.print(f"Emptying bucket {id}...")
+                # Delete all objects (pagination)
+                paginator = s3.get_paginator('list_objects_v2')
+                for page in paginator.paginate(Bucket=id):
+                    if 'Contents' in page:
+                        objects = [{'Key': obj['Key']} for obj in page['Contents']]
+                        s3.delete_objects(Bucket=id, Delete={'Objects': objects})
+                        console.print(f"  Deleted {len(objects)} objects...")
+
             console.print(f"Deleting bucket {id}...")
             s3.delete_bucket(Bucket=id)
             console.print(f"[bold green]Bucket {id} deleted.[/bold green]")

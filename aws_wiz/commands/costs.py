@@ -1,11 +1,3 @@
-# /// script
-# dependencies = [
-#   "boto3",
-#   "click",
-#   "rich",
-# ]
-# ///
-
 import boto3
 import click
 from datetime import datetime, timedelta
@@ -15,7 +7,7 @@ from rich import box
 
 @click.command()
 @click.option('--months', '-m', default=3, help='Number of months to look back')
-def main(months):
+def costs(months):
     """AWS Cost Statement with improved vertical spacing and Net Cost row."""
     console = Console()
     ce = boto3.client('ce', region_name='us-east-1')
@@ -45,12 +37,12 @@ def main(months):
             m_label = period['TimePeriod']['Start']
             months_list.append(m_label)
             statement[m_label] = {"Usage": {}, "Credits": {}, "Tax": 0.0}
-            
+
             for group in period['Groups']:
                 rtype = group['Keys'][0]
                 service = group['Keys'][1]
                 amount = float(group['Metrics']['UnblendedCost']['Amount'])
-                
+
                 if amount == 0: continue
 
                 if "Usage" in rtype:
@@ -65,7 +57,7 @@ def main(months):
         # Render Table
         table = Table(title="\nAWS MONTHLY COST STATEMENT", title_style="bold", box=box.ROUNDED, show_footer=True)
         table.add_column("Description", footer="[bold]NET BILLABLE TOTAL[/bold]", width=40)
-        
+
         for m in months_list:
             table.add_column(m, justify="right")
 
@@ -94,7 +86,7 @@ def main(months):
             sub = sum(statement[m]["Usage"].values()) + statement[m]["Tax"]
             subtotal_row.append(f"[bold cyan]${sub:.2f}[/bold cyan]")
         table.add_row(*subtotal_row)
-        table.add_row("") 
+        table.add_row("")
 
         # --- SECTION: CREDITS ---
         table.add_row("[bold red underline]Less: Credits & Discounts[/bold red underline]")
@@ -108,22 +100,22 @@ def main(months):
         # --- NEW SECTION: NET COST ---
         table.add_row("")
         net_cost_row = ["[bold yellow]NET COST (AFTER CREDITS)[/bold yellow]"]
-        
+
         # Calculate totals for footers and the final row
         for i, m in enumerate(months_list):
             usage_total = sum(statement[m]["Usage"].values())
             credit_total = sum(statement[m]["Credits"].values())
             net = usage_total + credit_total + statement[m]["Tax"]
-            
+
             # Format value for the table row
             formatted_net = f"[bold yellow]${max(0, net):.2f}[/bold yellow]"
             net_cost_row.append(formatted_net)
-            
+
             # Update footer for each column
             table.columns[i+1].footer = formatted_net
 
         table.add_row(*net_cost_row)
-        
+
         # --- EXTRA BOTTOM PADDING ---
         table.add_row("", *["" for _ in months_list])
         table.add_section()
@@ -133,6 +125,3 @@ def main(months):
 
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
-
-if __name__ == "__main__":
-    main()

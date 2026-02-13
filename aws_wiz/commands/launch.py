@@ -1,29 +1,15 @@
-# /// script
-# dependencies = [
-#   "boto3",
-#   "click",
-#   "rich",
-# ]
-# ///
-
 import boto3
 import click
-import sys
 import os
-import time
 import stat
 from datetime import datetime
 from rich.console import Console
 from rich.panel import Panel
 
+from aws_wiz.state import KEYS_DIR, ensure_state_dirs
+
 console = Console()
 
-STATE_DIR = ".state"
-KEYS_DIR = os.path.join(STATE_DIR, "keys")
-
-def ensure_state_dirs():
-    if not os.path.exists(KEYS_DIR):
-        os.makedirs(KEYS_DIR, mode=0o700)
 
 def get_latest_ami(ec2, framework):
     if framework == 'pytorch':
@@ -46,38 +32,38 @@ def get_latest_ami(ec2, framework):
 
 def get_or_create_key(ec2, region):
     ensure_state_dirs()
-    
-    # 1. Check if any local key in .state/keys exists in AWS
+
+    # 1. Check if any local key in keys dir exists in AWS
     local_keys = [f for f in os.listdir(KEYS_DIR) if f.endswith(".pem")]
     if local_keys:
         aws_keys_resp = ec2.describe_key_pairs()
         aws_key_names = [k['KeyName'] for k in aws_keys_resp['KeyPairs']]
-        
+
         for lk in local_keys:
             key_name = lk.replace(".pem", "")
             if key_name in aws_key_names:
                 console.print(f"Using existing local key: [green]{lk}[/green]")
-                return key_name, os.path.join(KEYS_DIR, lk)
+                return key_name, str(KEYS_DIR / lk)
 
     # 2. Otherwise, create a new one
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     key_name = f"aws-wiz-{region}-{timestamp}"
-    key_file = os.path.join(KEYS_DIR, f"{key_name}.pem")
-    
+    key_file = str(KEYS_DIR / f"{key_name}.pem")
+
     console.print(f"Generating new key pair: [bold cyan]{key_name}[/bold cyan]...")
     resp = ec2.create_key_pair(KeyName=key_name)
-    
+
     with open(key_file, "w") as f:
         f.write(resp['KeyMaterial'])
-    
+
     # Set permissions to 400 (required for SSH)
     os.chmod(key_file, stat.S_IRUSR)
-    
+
     return key_name, key_file
 
 def get_or_create_sg(ec2, vpc_id=None):
     sg_name = "aws-wiz-ssh"
-    
+
     if not vpc_id:
         vpcs = ec2.describe_vpcs(Filters=[{'Name': 'isDefault', 'Values': ['true']}])
         if vpcs['Vpcs']:
@@ -95,7 +81,7 @@ def get_or_create_sg(ec2, vpc_id=None):
             return resp['SecurityGroups'][0]['GroupId']
     except Exception:
         pass
-        
+
     try:
         resp = ec2.create_security_group(GroupName=sg_name, Description="Allow SSH for AWS Wiz", VpcId=vpc_id)
         group_id = resp['GroupId']
@@ -115,10 +101,10 @@ def get_or_create_sg(ec2, vpc_id=None):
 @click.option('--spot', '-s', is_flag=True, help='Use Spot')
 @click.option('--framework', '-f', default='pytorch', type=click.Choice(['pytorch', 'tensorflow', 'base']), help='DL Framework')
 @click.option('--iam-profile', help='IAM Instance Profile Name')
-def main(type, region, name, spot, framework, iam_profile):
+def launch(type, region, name, spot, framework, iam_profile):
     """Launch a GPU instance and manage SSH keys automatically."""
     ec2 = boto3.client('ec2', region_name=region)
-    
+
     console.print(Panel(f"Launching [bold cyan]{type}[/bold cyan] in [yellow]{region}[/yellow]", title="AwsWiz Launch"))
 
     # 1. AMI
@@ -144,7 +130,7 @@ def main(type, region, name, spot, framework, iam_profile):
         else:
             console.print("[red]No subnets found in default VPC[/red]")
             return
-    
+
     launch_args = {
         'ImageId': ami_id, 'InstanceType': type, 'KeyName': key_name,
         'SecurityGroupIds': [sg_id], 'MinCount': 1, 'MaxCount': 1,
@@ -177,6 +163,3 @@ def main(type, region, name, spot, framework, iam_profile):
             ))
     except Exception as e:
         console.print(f"[bold red]Launch Failed:[/bold red] {e}")
-
-if __name__ == "__main__":
-    main()

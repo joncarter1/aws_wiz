@@ -1,21 +1,11 @@
-# /// script
-# dependencies = [
-#   "boto3",
-#   "click",
-#   "rich",
-# ]
-# ///
-
 import boto3
 import click
-import sys
-import time
 from rich.console import Console
 from rich.panel import Panel
 
 def delete_vpc_dependencies(ec2, vpc_id):
     console = Console()
-    
+
     # 1. Delete Subnets
     subnets = ec2.describe_subnets(Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}])['Subnets']
     for sn in subnets:
@@ -61,7 +51,7 @@ def delete_vpc_dependencies(ec2, vpc_id):
 @click.option('--region', '-r', default='us-east-1', help='AWS Region')
 @click.option('--all', 'all_custom', is_flag=True, help='Delete ALL non-default VPCs')
 @click.option('--vpc-id', help='Specific VPC ID to delete')
-def main(region, all_custom, vpc_id):
+def cleanup_vpc(region, all_custom, vpc_id):
     """Deep cleanup of non-default VPCs and their dependencies."""
     console = Console()
     ec2 = boto3.client('ec2', region_name=region)
@@ -82,13 +72,13 @@ def main(region, all_custom, vpc_id):
 
     for vid in vpcs_to_delete:
         console.print(f"\n[bold cyan]Processing VPC: {vid}[/bold cyan]")
-        
+
         # Safety Check: Running instances
         instances = ec2.describe_instances(Filters=[
             {'Name': 'vpc-id', 'Values': [vid]},
             {'Name': 'instance-state-name', 'Values': ['running', 'stopped']}
         ])['Reservations']
-        
+
         if instances:
             console.print(f"  [red]Skipping {vid}: Contains instances. Please terminate them first.[/red]")
             continue
@@ -107,6 +97,3 @@ def main(region, all_custom, vpc_id):
             console.print(f"  [bold red]- Error deleting VPC {vid}: {e}[/bold red]")
 
     console.print("\n[bold green]VPC Cleanup Finished.[/bold green]")
-
-if __name__ == "__main__":
-    main()

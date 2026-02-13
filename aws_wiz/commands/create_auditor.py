@@ -1,15 +1,6 @@
-# /// script
-# dependencies = [
-#   "boto3",
-#   "click",
-#   "rich",
-# ]
-# ///
-
 import boto3
 import click
 import json
-import sys
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -40,7 +31,7 @@ def check_ce_enabled(ce_client):
         today = datetime.now()
         start = (today - timedelta(days=2)).strftime('%Y-%m-%d')
         end = (today - timedelta(days=1)).strftime('%Y-%m-%d')
-        
+
         ce_client.get_cost_and_usage(
             TimePeriod={'Start': start, 'End': end},
             Granularity='DAILY',
@@ -48,17 +39,13 @@ def check_ce_enabled(ce_client):
         )
         return True
     except ClientError as e:
-        # DataUnavailable means it's working but maybe no data yet, which is fine.
-        # But usually 'AccessDenied' is the sign it's not enabled or perm missing.
-        # Actually, if CE is not enabled, you often get a specific error about it.
-        # We'll treat AccessDenied or 404 as flags.
         if e.response['Error']['Code'] == 'DataUnavailableException':
             return True
         raise e
 
 @click.command()
 @click.option('--name', default='awswiz-auditor', help='Name of the IAM user to create')
-def main(name):
+def create_auditor(name):
     """Creates a restricted IAM user for cost auditing."""
     iam = boto3.client('iam')
     ce = boto3.client('ce', region_name='us-east-1')
@@ -69,9 +56,7 @@ def main(name):
     try:
         check_ce_enabled(ce)
     except Exception as e:
-        # We won't block execution on this because sometimes permissions are weird,
-        # but we warn loudly.
-        console.print(f"[yellow]⚠️  Warning: Could not verify Cost Explorer status ({e}).[/yellow]")
+        console.print(f"[yellow]Warning: Could not verify Cost Explorer status ({e}).[/yellow]")
         console.print("Ensure you have enabled 'Cost Explorer' in the Billing Console, or the keys won't work.")
 
     # 2. Creation logic
@@ -103,7 +88,7 @@ def main(name):
                 PolicyName="CostExplorerOnly",
                 PolicyDocument=json.dumps(POLICY_DOCUMENT)
             )
-        
+
         # Create Keys
         with console.status("Generating access keys..."):
             response = iam.create_access_key(UserName=name)
@@ -111,8 +96,8 @@ def main(name):
 
         # 3. Final Output
         action = "Created" if user_created else "Updated"
-        console.print(f"\n[bold green]✅ Success! User {action}.[/bold green]")
-        
+        console.print(f"\n[bold green]Success! User {action}.[/bold green]")
+
         creds_text = Text()
         creds_text.append(f"User: {name}\n", style="dim")
         creds_text.append(f"AWS_ACCESS_KEY_ID: {creds['AccessKeyId']}\n", style="bold yellow")
@@ -124,11 +109,8 @@ def main(name):
             expand=False,
             border_style="green"
         ))
-        
+
         console.print("[dim]Note: These keys only have permission to view cost data.[/dim]\n")
 
     except ClientError as e:
         console.print(f"[bold red]AWS Error:[/bold red] {e}")
-
-if __name__ == "__main__":
-    main()

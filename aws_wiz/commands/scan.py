@@ -1,14 +1,5 @@
-# /// script
-# dependencies = [
-#   "boto3",
-#   "click",
-#   "rich",
-# ]
-# ///
-
 import boto3
 import json
-import sys
 import asyncio
 import click
 from datetime import datetime, timezone
@@ -18,28 +9,23 @@ from rich.table import Table
 from rich import box
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
+from aws_wiz.utils import get_regions
+
+
 def json_serial(obj):
     """JSON serializer for objects not serializable by default json code"""
     if isinstance(obj, datetime):
         return obj.isoformat()
     raise TypeError ("Type %s not serializable" % type(obj))
 
-def get_regions():
-    try:
-        ec2 = boto3.client('ec2', region_name='us-east-1')
-        response = ec2.describe_regions()
-        return [r['RegionName'] for r in response['Regions']]
-    except Exception:
-        return ['us-east-1']
-
 def scan_region_sync(region):
     ec2 = boto3.client('ec2', region_name=region)
     data = {
-        "ec2": [], "volumes": [], "security_groups": [], 
-        "key_pairs": [], "elastic_ips": [], "vpcs": [], 
+        "ec2": [], "volumes": [], "security_groups": [],
+        "key_pairs": [], "elastic_ips": [], "vpcs": [],
         "subnets": [], "igws": []
     }
-    
+
     try:
         # Batch 1: Instances
         for res in ec2.describe_instances().get('Reservations', []):
@@ -57,7 +43,7 @@ def scan_region_sync(region):
                     'Tags': {tag['Key']: tag['Value'] for tag in i.get('Tags', [])},
                     'Region': region
                 })
-        
+
         # Batch 2: Volumes
         for v in ec2.describe_volumes().get('Volumes', []):
             data["volumes"].append({
@@ -127,7 +113,7 @@ def scan_region_sync(region):
 
     except Exception:
         pass
-        
+
     return data
 
 def scan_s3():
@@ -146,7 +132,7 @@ def scan_s3():
 
 async def scan_all_async():
     regions = get_regions()
-    
+
     # Setup Progress Bar
     with Progress(
         SpinnerColumn(),
@@ -154,12 +140,12 @@ async def scan_all_async():
         BarColumn(),
         TaskProgressColumn(),
     ) as progress:
-        
+
         task_id = progress.add_task(f"[cyan]Scanning {len(regions)} regions...", total=len(regions))
-        
+
         executor = ThreadPoolExecutor(max_workers=20)
         loop = asyncio.get_running_loop()
-        
+
         # Helper to update progress
         async def run_and_track(region):
             res = await loop.run_in_executor(executor, scan_region_sync, region)
@@ -168,21 +154,21 @@ async def scan_all_async():
 
         tasks = [run_and_track(r) for r in regions]
         results = await asyncio.gather(*tasks)
-    
+
     # S3 is global
     s3_data = scan_s3()
 
     data = {
-        "ec2": [], "volumes": [], "security_groups": [], 
+        "ec2": [], "volumes": [], "security_groups": [],
         "key_pairs": [], "elastic_ips": [], "vpcs": [],
         "subnets": [], "igws": [], "s3": s3_data,
         "timestamp": datetime.now().isoformat()
     }
-    
+
     for res in results:
         for key in res:
             data[key].extend(res[key])
-            
+
     return data
 
 def calculate_uptime(launch_time):
@@ -220,7 +206,7 @@ def get_ssh_user(platform_details):
 
 def print_pretty(data):
     console = Console()
-    
+
     # 1. EC2 Table
     console.print("\n[bold cyan]EC2 Instances[/bold cyan]")
     if not data['ec2']:
@@ -244,11 +230,11 @@ def print_pretty(data):
             uptime = "-"
             if i['State'] == 'running': uptime = calculate_uptime(i['LaunchTime'])
             ssh_user = get_ssh_user(i.get('PlatformDetails', ''))
-            
+
             table.add_row(
                 i['InstanceId'], name, i['InstanceType'],
                 f"[{state_style}]{i['State']}[/{state_style}]",
-                uptime, i['PublicIpAddress'] or "-", i.get('PrivateIpAddress') or "-", 
+                uptime, i['PublicIpAddress'] or "-", i.get('PrivateIpAddress') or "-",
                 i.get('KeyName') or "-", ssh_user, i['Region']
             )
         console.print(table)
@@ -295,7 +281,7 @@ def print_pretty(data):
         for v in non_default_vpcs:
             v_table.add_row(v['VpcId'], v['Name'], v['CidrBlock'], v['Region'])
         console.print(v_table)
-        
+
         custom_subnets = [s for s in data['subnets'] if s['VpcId'] in vpc_ids]
         if custom_subnets:
             console.print(f"[dim]Found {len(custom_subnets)} subnets and {len([i for i in data['igws'] if i['VpcId'] in vpc_ids])} IGWs associated with these VPCs.[/dim]")
@@ -326,12 +312,9 @@ def print_pretty(data):
 
 @click.command()
 @click.option('--pretty', '-p', is_flag=True, help='Pretty print table')
-def main(pretty):
+def scan(pretty):
     data = asyncio.run(scan_all_async())
     if pretty:
         print_pretty(data)
     else:
         print(json.dumps(data, indent=2, default=json_serial))
-
-if __name__ == "__main__":
-    main()

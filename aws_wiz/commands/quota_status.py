@@ -1,14 +1,5 @@
-# /// script
-# dependencies = [
-#   "boto3",
-#   "click",
-#   "rich",
-# ]
-# ///
-
 import boto3
 import click
-import sys
 import asyncio
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -16,13 +7,8 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
-def get_regions():
-    try:
-        ec2 = boto3.client('ec2', region_name='us-east-1')
-        response = ec2.describe_regions()
-        return [r['RegionName'] for r in response['Regions']]
-    except Exception:
-        return ['us-east-1']
+from aws_wiz.utils import get_regions
+
 
 def get_quota_history(region):
     sq = boto3.client('service-quotas', region_name=region)
@@ -32,11 +18,11 @@ def get_quota_history(region):
             ServiceCode='ec2'
         )
         history = response.get('RequestedQuotas', [])
-        
+
         # Add region info to each entry
         for h in history:
             h['Region'] = region
-            
+
         return history
     except Exception:
         return []
@@ -46,30 +32,30 @@ async def scan_all_history(target_region=None):
         regions = [target_region]
     else:
         regions = get_regions()
-    
+
     executor = ThreadPoolExecutor(max_workers=20)
     loop = asyncio.get_running_loop()
-    
+
     tasks = [loop.run_in_executor(executor, get_quota_history, r) for r in regions]
     results = await asyncio.gather(*tasks)
-    
+
     # Flatten results
     flat_history = [item for sublist in results for item in sublist]
-    
+
     # Sort by creation date (newest first)
     return sorted(flat_history, key=lambda x: x.get('Created', datetime.min), reverse=True)
 
 @click.command()
 @click.option('--region', '-r', default='us-east-1', help='AWS Region or "all"')
 @click.option('--all', 'scan_all', is_flag=True, help='Scan all regions')
-def main(region, scan_all):
+def quota_status(region, scan_all):
     """Check status of service quota increase requests."""
     console = Console()
     target = 'all' if scan_all else region
-    
+
     with console.status(f"[bold green]Fetching quota request history in {target}..."):
         results = asyncio.run(scan_all_history(target))
-    
+
     if not results:
         console.print(f"[yellow]No quota request history found.[/yellow]")
         return
@@ -85,10 +71,10 @@ def main(region, scan_all):
     for r in results:
         status = r['Status']
         status_style = "yellow" if status == 'CASE_OPENED' or status == 'PENDING' else "green" if status == 'APPROVED' else "red"
-        
+
         # Some items might not have a quota name if they are very old or specific
         quota_name = r.get('QuotaName', 'Unknown Quota')
-        
+
         table.add_row(
             r.get('Created').strftime("%Y-%m-%d %H:%M") if r.get('Created') else "N/A",
             r['Region'],
@@ -108,6 +94,3 @@ def main(region, scan_all):
             link = f"https://{reg}.console.aws.amazon.com/servicequotas/home/requests"
             console.print(f"- {reg}: {link}")
         console.print("")
-
-if __name__ == "__main__":
-    main()

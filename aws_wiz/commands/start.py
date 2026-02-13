@@ -1,21 +1,15 @@
-# /// script
-# dependencies = [
-#   "boto3",
-#   "click",
-#   "rich",
-# ]
-# ///
-
 import boto3
 import click
-import sys
+import os
 from rich.console import Console
 from rich.panel import Panel
+
+from aws_wiz.state import KEYS_DIR
 
 @click.command()
 @click.option('--id', '-i', required=True, help='Instance ID')
 @click.option('--region', '-r', default='us-east-1', help='AWS Region')
-def main(id, region):
+def start(id, region):
     """Start an EC2 instance."""
     console = Console()
     ec2 = boto3.client('ec2', region_name=region)
@@ -26,7 +20,7 @@ def main(id, region):
         instance = resp['Reservations'][0]['Instances'][0]
         state = instance['State']['Name']
         name = next((t['Value'] for t in instance.get('Tags', []) if t['Key'] == 'Name'), "N/A")
-        
+
         console.print(Panel(
             f"ID: [cyan]{id}[/cyan]\nName: [yellow]{name}[/yellow]\nState: [bold]{state}[/bold]",
             title="Instance Found"
@@ -53,12 +47,12 @@ def main(id, region):
         console.print("Starting instance...")
         ec2.start_instances(InstanceIds=[id])
         console.print(f"[bold green]Start signal sent to {id}.[/bold green]")
-        
+
         # Wait
         with console.status("Waiting for instance to start..."):
             waiter = ec2.get_waiter('instance_running')
             waiter.wait(InstanceIds=[id])
-            
+
             # Fetch public IP
             resp = ec2.describe_instances(InstanceIds=[id])
             public_ip = resp['Reservations'][0]['Instances'][0].get('PublicIpAddress')
@@ -66,20 +60,20 @@ def main(id, region):
         console.print("[bold green]Instance is now RUNNING.[/bold green]")
         if public_ip:
             console.print(f"Public IP: [bold cyan]{public_ip}[/bold cyan]")
-            
+
             # Try to find the local key
-            KEYS_DIR = ".state/keys"
-            import os
             try:
+                if not KEYS_DIR.is_dir():
+                    raise FileNotFoundError
                 local_keys = [f for f in os.listdir(KEYS_DIR) if f.endswith(".pem")]
                 key_name = instance.get('KeyName')
                 key_path = None
                 if key_name:
                     for lk in local_keys:
                         if lk.startswith(key_name):
-                            key_path = os.path.join(KEYS_DIR, lk)
+                            key_path = str(KEYS_DIR / lk)
                             break
-                
+
                 if key_path:
                     console.print(f"Connect: [bold green]ssh -i {key_path} ubuntu@{public_ip}[/bold green]")
                 else:
@@ -89,6 +83,3 @@ def main(id, region):
 
     except Exception as e:
         console.print(f"[red]Error starting instance: {e}[/red]")
-
-if __name__ == "__main__":
-    main()

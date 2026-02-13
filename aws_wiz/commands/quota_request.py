@@ -1,14 +1,5 @@
-# /// script
-# dependencies = [
-#   "boto3",
-#   "click",
-#   "rich",
-# ]
-# ///
-
 import boto3
 import click
-import sys
 from rich.console import Console
 from rich.panel import Panel
 
@@ -17,11 +8,11 @@ from rich.panel import Panel
 @click.option('--value', '-v', required=True, type=float, help='The new desired vCPU value')
 @click.option('--region', '-r', default='us-east-1', help='AWS Region')
 @click.option('--service', '-s', default='ec2', help='Service code (default: ec2)')
-def main(code, value, region, service):
+def quota_request(code, value, region, service):
     """Request a service quota increase."""
     console = Console()
     sq = boto3.client('service-quotas', region_name=region)
-    
+
     # 1. Fetch current info for confirmation
     try:
         resp = sq.get_service_quota(ServiceCode=service, QuotaCode=code)
@@ -58,7 +49,7 @@ def main(code, value, region, service):
             DesiredValue=value
         )
         req = response['RequestedQuota']
-        
+
         console.print(f"\n[bold green]Success! Request submitted.[/bold green]")
         console.print(f"Request ID: [bold]{req['Id']}[/bold]")
         console.print(f"Status: [yellow]{req['Status']}[/yellow]")
@@ -66,6 +57,3 @@ def main(code, value, region, service):
 
     except Exception as e:
         console.print(f"[bold red]Error submitting request:[/bold red] {e}")
-
-if __name__ == "__main__":
-    main()

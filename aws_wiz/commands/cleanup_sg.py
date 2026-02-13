@@ -1,14 +1,5 @@
-# /// script
-# dependencies = [
-#   "boto3",
-#   "click",
-#   "rich",
-# ]
-# ///
-
 import boto3
 import click
-import sys
 from rich.console import Console
 from rich.table import Table
 from rich import box
@@ -16,7 +7,7 @@ from rich import box
 @click.command()
 @click.option('--region', '-r', default='us-east-1', help='AWS Region')
 @click.option('--force', '-f', is_flag=True, help='Skip confirmation')
-def main(region, force):
+def cleanup_sg(region, force):
     """Find and delete unused Security Groups."""
     console = Console()
     ec2 = boto3.client('ec2', region_name=region)
@@ -24,7 +15,7 @@ def main(region, force):
     with console.status(f"[bold green]Scanning Security Groups in {region}..."):
         # 1. Get all SGs
         all_sgs = ec2.describe_security_groups()['SecurityGroups']
-        
+
         # 2. Get used SGs (from Network Interfaces)
         # Network Interfaces represent ALL usage (Instances, Lambda, ELB, RDS, etc.)
         used_sg_ids = set()
@@ -33,9 +24,6 @@ def main(region, force):
             for ni in page['NetworkInterfaces']:
                 for group in ni['Groups']:
                     used_sg_ids.add(group['GroupId'])
-        
-        # Also check for references in other SGs (peering/rules) to avoid dependency errors
-        # (Simplified check: if a group is referenced by another, deletion will fail gracefully via AWS API)
 
     # 3. Filter
     unused_sgs = []
@@ -80,6 +68,3 @@ def main(region, force):
                     console.print(f"[red]Error deleting {sg['GroupName']}: {e}[/red]")
 
     console.print(f"\n[bold green]Cleanup Complete. Deleted {deleted_count} groups.[/bold green]")
-
-if __name__ == "__main__":
-    main()

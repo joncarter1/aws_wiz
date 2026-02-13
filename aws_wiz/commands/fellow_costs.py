@@ -1,30 +1,16 @@
-# /// script
-# dependencies = [
-#   "boto3",
-#   "click",
-#   "rich",
-#   "tomli",
-# ]
-# ///
-
 import boto3
 import click
 import asyncio
 import os
-import sys
+import tomllib
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from rich.console import Console
 from rich.table import Table
 from rich import box
 
-# Use tomli for compatibility with Python < 3.11
-try:
-    import tomllib
-except ImportError:
-    import tomli as tomllib
+from aws_wiz.state import FELLOWS_FILE
 
-FELLOWS_FILE = ".state/fellows.toml"
 
 def get_detailed_fellow_statement(name, creds):
     """Fetches comprehensive cost statement logic matching tools/costs.py."""
@@ -58,18 +44,18 @@ def get_detailed_fellow_statement(name, creds):
         for period in response['ResultsByTime']:
             m_label = period['TimePeriod']['Start']
             months_list.append(m_label)
-            
+
             statement_data[m_label] = {
                 "Usage": {},
                 "Credits": {},
                 "Tax": 0.0
             }
-            
+
             for group in period['Groups']:
                 rtype = group['Keys'][0]
                 service = group['Keys'][1]
                 amount = float(group['Metrics']['UnblendedCost']['Amount'])
-                
+
                 if amount == 0:
                     continue
 
@@ -97,15 +83,15 @@ def get_detailed_fellow_statement(name, creds):
 
     except Exception as e:
         return {
-            "name": name, 
-            "status": "Error", 
+            "name": name,
+            "status": "Error",
             "error": str(e)
         }
 
 async def scan_all_fellows(fellows_dict):
     executor = ThreadPoolExecutor(max_workers=5)
     loop = asyncio.get_running_loop()
-    
+
     tasks = [
         loop.run_in_executor(executor, get_detailed_fellow_statement, name, creds)
         for name, creds in fellows_dict.items()
@@ -118,16 +104,16 @@ def print_statement_table(console, title, months, statement_data, usage_services
     for svc in usage_services:
         if any(statement_data[m]['Usage'].get(svc, 0) > 0.01 for m in months):
             filtered_usage.append(svc)
-            
+
     filtered_credits = []
     for cr in credit_types:
         if any(abs(statement_data[m]['Credits'].get(cr, 0)) > 0.01 for m in months):
             filtered_credits.append(cr)
 
     table = Table(
-        title=f"\n{title}", 
-        title_style=f"bold {style}", 
-        box=box.ROUNDED, 
+        title=f"\n{title}",
+        title_style=f"bold {style}",
+        box=box.ROUNDED,
         show_footer=True
     )
     table.add_column("Description", footer="[bold]NET BILLABLE TOTAL[/bold]", width=45)
@@ -155,7 +141,7 @@ def print_statement_table(console, title, months, statement_data, usage_services
         sub = sum(statement_data[m]["Usage"].values()) + statement_data[m]["Tax"]
         subtotal_row.append(f"[bold {style}]${sub:.2f}[/bold {style}]")
     table.add_row(*subtotal_row)
-    table.add_row("") 
+    table.add_row("")
 
     if filtered_credits:
         table.add_row("[bold red underline]Less: Credits & Discounts[/bold red underline]")
@@ -183,7 +169,7 @@ def print_statement_table(console, title, months, statement_data, usage_services
     console.print(table)
 
 @click.command()
-def main():
+def fellow_costs():
     """Detailed financial audit for all fellows."""
     console = Console()
     if not os.path.exists(FELLOWS_FILE):
@@ -212,9 +198,9 @@ def main():
         if res['status'] != "OK":
             console.print(f"[red]Skipping {res['name']}: {res['status']}[/red]")
             continue
-        
+
         print_statement_table(
-            console, 
+            console,
             f"AWS MONTHLY COST STATEMENT: {res['name'].upper()}",
             res['months'],
             res['statement'],
@@ -222,7 +208,7 @@ def main():
             res['credit_types']
         )
 
-        if not cohort_months: 
+        if not cohort_months:
             cohort_months = res['months']
             for m in cohort_months:
                 cohort_statement[m] = {"Usage": {}, "Credits": {}, "Tax": 0.0}
@@ -246,6 +232,3 @@ def main():
             sorted(list(cohort_credits)),
             style="green"
         )
-
-if __name__ == "__main__":
-    main()

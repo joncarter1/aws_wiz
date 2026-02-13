@@ -1,0 +1,13 @@
+[project]
+name = "aws-wiz"
+version = "0.1.0"
+description = "AWS infrastructure CLI for rapid prototyping"
+requires-python = ">=3.11"
+dependencies = ["boto3", "click", "rich"]
+
+[project.scripts]
+awiz = "aws_wiz.cli:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

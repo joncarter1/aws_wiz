@@ -1,14 +1,5 @@
-# /// script
-# dependencies = [
-#   "boto3",
-#   "click",
-#   "rich",
-# ]
-# ///
-
 import boto3
 import click
-import sys
 from rich.console import Console
 from rich.table import Table
 from rich import box
@@ -48,13 +39,10 @@ def check_ami_subscription(region, ami_id):
     except ClientError as e:
         code = e.response['Error']['Code']
         msg = e.response['Error']['Message']
-        
+
         if code == 'DryRunOperation':
             return True, "Subscription Active"
         elif code == 'OptInRequired':
-            # Extract URL from message if possible, or construct generic
-            # Message usually looks like: "In order to use this AWS Marketplace product you need to accept terms and subscribe..."
-            # We can construct a link if we had the product ID, but usually the error message contains a link.
             return False, "Opt-In Required"
         else:
             return False, f"Error: {code}"
@@ -62,10 +50,10 @@ def check_ami_subscription(region, ami_id):
 @click.command()
 @click.option('--region', '-r', default='us-east-1', help='AWS Region')
 @click.option('--framework', '-f', default='pytorch', type=click.Choice(['pytorch', 'tensorflow', 'base']), help='DL Framework')
-def main(region, framework):
+def ami(region, framework):
     """Find and validate AWS Deep Learning AMIs."""
     console = Console()
-    
+
     if framework == 'pytorch':
         pattern = "Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.* (Ubuntu 22.04)*"
     elif framework == 'tensorflow':
@@ -88,7 +76,7 @@ def main(region, framework):
 
     for img in images:
         is_sub, status = check_ami_subscription(region, img['ImageId'])
-        
+
         status_style = "green" if is_sub else "red"
         table.add_row(
             img['ImageId'],
@@ -98,11 +86,8 @@ def main(region, framework):
         )
 
     console.print(table)
-    
+
     # If any need opt-in, provide general advice
     if any(not check_ami_subscription(region, i['ImageId'])[0] for i in images):
         console.print("\n[bold red]Action Required:[/bold red] Some AMIs require manual Opt-In.")
         console.print("Please visit the [link=https://aws.amazon.com/marketplace]AWS Marketplace[/link] and search for 'Deep Learning AMI' to subscribe.")
-
-if __name__ == "__main__":
-    main()

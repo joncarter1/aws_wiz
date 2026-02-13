@@ -1,11 +1,5 @@
-# /// script
-# dependencies = [
-#   "boto3",
-#   "rich",
-# ]
-# ///
-
 import boto3
+import click
 import json
 import time
 from botocore.exceptions import ClientError
@@ -18,7 +12,9 @@ ROLE_NAME = "S3ThroughputRole"
 PROFILE_NAME = "S3ThroughputProfile"
 POLICY_NAME = "S3ThroughputAccess"
 
+@click.command()
 def setup_iam():
+    """Set up IAM role and instance profile for S3 throughput testing."""
     iam = boto3.client('iam')
 
     # 1. Create Role
@@ -32,7 +28,7 @@ def setup_iam():
             }
         ]
     }
-    
+
     try:
         iam.create_role(
             RoleName=ROLE_NAME,
@@ -60,7 +56,7 @@ def setup_iam():
             }
         ]
     }
-    
+
     try:
         iam.put_role_policy(
             RoleName=ROLE_NAME,
@@ -101,6 +97,3 @@ def setup_iam():
     console.print("[dim]Waiting 10s for IAM propagation...[/dim]")
     time.sleep(10)
     console.print(f"[bold green]IAM Setup Complete. Profile Name: {PROFILE_NAME}[/bold green]")
-
-if __name__ == "__main__":
-    setup_iam()

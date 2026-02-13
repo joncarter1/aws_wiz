@@ -9,9 +9,10 @@ Experimental AI-first Infrastructure Tool for rapid AI prototyping.
 
 ## Installation
 
-Install [uv](https://docs.astral.sh/uv/) (if you don't have it) and then install `awiz`:
+Install the [AWS CLI](https://aws.amazon.com/cli/) and [uv](https://docs.astral.sh/uv/) (if you don't have them) and then install `awiz`:
 
 ```sh
+$ brew install awscli
 $ curl -LsSf https://astral.sh/uv/install.sh | sh
 $ uv tool install git+https://github.com/besarthoxhaj/aws_wiz
 ```

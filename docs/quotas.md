@@ -1,6 +1,6 @@
 # AWS EC2 GPU & Accelerator Service Quotas
 
-This document lists the primary quota buckets for GPU and specialized ML instances. Use `tools/quota_check.py` to see your live limits.
+This document lists the primary quota buckets for GPU and specialized ML instances. Use `awiz quota-check` to see your live limits.
 
 | Quota Type | Exact Quota Name                              | Code       | Included Instance Families |
 |:-----------|:----------------------------------------------|:-----------|:---------------------------|

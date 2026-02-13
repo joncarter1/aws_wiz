@@ -137,7 +137,7 @@ Internet <────> [IGW: igw-0c111979d70665779] <────> VPC (172.31.
 
 ## Prevention
 
-To prevent this in the future, the `launch.py` tool should:
+To prevent this in the future, the `awiz launch` tool should:
 1. Verify IGW exists before launching instances
 2. Check route table states
 3. Create IGW if missing in default VPC

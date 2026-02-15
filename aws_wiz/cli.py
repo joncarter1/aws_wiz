@@ -18,6 +18,7 @@ from aws_wiz.commands.cleanup_vpc import cleanup_vpc
 from aws_wiz.commands.nuke import nuke
 from aws_wiz.commands.create_cluster import create_cluster
 from aws_wiz.commands.setup_iam import setup_iam
+from aws_wiz.commands.completion import completion
 
 
 @click.group()
@@ -43,3 +44,4 @@ cli.add_command(cleanup_vpc, "cleanup-vpc")
 cli.add_command(nuke)
 cli.add_command(create_cluster, "create-cluster")
 cli.add_command(setup_iam, "setup-iam")
+cli.add_command(completion)
